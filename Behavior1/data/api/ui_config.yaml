@@ -1,0 +1,7 @@
+# UI Configuration
+# Page URL configurations
+
+ui_config:
+  example_url: https://example.com
+  baidu_url: https://www.baidu.com
+  google_url: https://www.google.com

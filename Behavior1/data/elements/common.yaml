@@ -1,0 +1,37 @@
+# Common element location configuration
+# Used to store page element location information
+
+login_page:
+  username_input: 
+    type: "id"
+    value: "username"
+  password_input:
+    type: "id"
+    value: "password"
+  login_button:
+    type: "css"
+    value: "button[type='submit']"
+
+google_page:
+  search_box:
+    type: "css"
+    value: "input[name='q']"
+  search_button:
+    type: "css"
+    value: "input[name='btnK']"
+  search_results:
+    type: "id"
+    value: "search"
+
+baidu_page:
+  search_box:
+    type: "id"
+    value: "kw"
+  search_button:
+    type: "id"
+    value: "su"
+
+example_page:
+  heading:
+    type: "css"
+    value: "h1"
