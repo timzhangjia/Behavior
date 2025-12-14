@@ -1,0 +1,116 @@
+
+没错，完全不需要 PyInstaller。
+实际上，对于包含 Playwright（浏览器内核）、Allure（Java依赖）这种复杂依赖的项目，用 PyInstaller 打包反而会非常痛苦（处理各种隐藏导入、路径映射、打进去的文件太大解压慢等问题）。
+采用 “绿色整合包” (Portable Package) 的方式是最稳定、最适合交付给非 IT 用户的。
+以下是 支持 Allure + Playwright + Python 零环境运行 的终极打包方案。
+第一步：准备文件目录
+请在电脑上新建文件夹 AutoTest_Ultimate，结构如下（缺一不可）：
+code
+Text
+AutoTest_Ultimate/
+├── python_embed/       # (1) 免安装 Python
+├── java_embed/         # (2) 免安装 Java (JRE) -> Allure必须！
+├── allure_cli/         # (3) Allure 命令行工具 -> run.py调用的就是它
+├── browsers/           # (4) Playwright 浏览器
+├── project/            # (5) 你的项目源码
+└── start.bat           # (6) 启动脚本
+第二步：填充内容（关键步骤）
+1. 放入 Python (python_embed)
+同之前步骤：下载 Windows embeddable package，解压。
+记得改配置：打开 python3xx._pth，去掉 import site 的注释。
+装依赖：在 AutoTest_Ultimate 根目录打开 CMD 运行：
+code
+Bash
+python_embed\python.exe get-pip.py
+python_embed\python.exe -m pip install playwright pytest pytest-bdd allure-pytest -t python_embed\Lib\site-packages
+2. 放入 Java (java_embed) —— 这是 Allure 能跑的关键
+非 IT 用户没装 Java，你必须把 Java 塞进去。
+下载 OpenJDK Portable (JRE)。推荐 Eclipse Temurin JRE (Zip格式)。
+解压后，把文件夹改名为 java_embed 放入目录。
+检查点：确保 AutoTest_Ultimate/java_embed/bin/java.exe 存在。
+3. 放入 Allure 工具 (allure_cli)
+下载 Allure Commandline zip。
+解压后，把文件夹里的内容（即包含 bin, lib 的那个文件夹）放入 allure_cli。
+检查点：确保 AutoTest_Ultimate/allure_cli/bin/allure.bat 存在。
+4. 放入浏览器 (browsers)
+同之前步骤，在 AutoTest_Ultimate 下运行 CMD：
+code
+Bash
+set PLAYWRIGHT_BROWSERS_PATH=browsers
+python_embed\python.exe -m playwright install chromium
+5. 放入代码 (project)
+把你的 run.py, features, config 等全拷进去。
+第三步：编写“魔法”启动脚本 (start.bat)
+这个脚本的作用是：在运行 Python 之前，临时把该文件夹里的 Java 和 Allure 加入到环境变量中。这样你的 Python 代码 subprocess.run(["allure", ...]) 就能找到命令了。
+在 AutoTest_Ultimate 根目录下新建 start.bat：
+code
+Batch
+@echo off
+chcp 65001
+setlocal enabledelayedexpansion
+
+echo ========================================================
+echo      自动化测试启动器 (Allure 集成版)
+echo ========================================================
+
+:: 1. 定位当前目录
+set "ROOT_DIR=%~dp0"
+
+:: 2. 配置 Python
+set "PYTHON_EXE=%ROOT_DIR%python_embed\python.exe"
+
+:: 3. 配置 Playwright 浏览器路径
+set "PLAYWRIGHT_BROWSERS_PATH=%ROOT_DIR%browsers"
+
+:: 4. 配置 Java 环境 (Allure 依赖)
+set "JAVA_HOME=%ROOT_DIR%java_embed"
+set "PATH=%JAVA_HOME%\bin;%PATH%"
+
+:: 5. 配置 Allure 环境
+set "ALLURE_HOME=%ROOT_DIR%allure_cli"
+set "PATH=%ALLURE_HOME%\bin;%PATH%"
+
+:: 6. 验证环境 (可选，用于调试)
+echo 正在检查环境...
+java -version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [错误] 无法调用内置 Java，请检查 java_embed 目录。
+    pause
+    exit /b
+)
+call allure --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [错误] 无法调用内置 Allure，请检查 allure_cli 目录。
+    pause
+    exit /b
+)
+
+:: 7. 进入项目并运行
+cd "%ROOT_DIR%project"
+
+echo 环境加载完毕，开始执行测试脚本...
+echo --------------------------------------------------------
+
+:: 运行你的 Python 入口文件
+:: 因为上面设置了 PATH，你的 python 代码里 subprocess.run(["allure"...]) 现在能正常工作了
+"%PYTHON_EXE%" run.py
+
+echo.
+echo ========================================================
+echo 测试结束。
+echo ========================================================
+pause
+第四步：交付
+压缩：把 AutoTest_Ultimate 文件夹压缩成 ZIP。
+大小预估：
+Python: ~20MB
+Java JRE: ~40MB
+Allure CLI: ~20MB
+Chromium: ~150MB+
+总计：压缩包约 200MB - 300MB。
+发送给用户。
+为什么这样做比 PyInstaller 好？
+容错率高：如果用户说“浏览器起不来”，你不需要重新编译 exe，只需要让他改一下 .bat 或者替换一下文件就行。
+路径清晰：PyInstaller 运行时的临时路径 (_MEIxxxx) 非常坑，经常导致 allure 找不到生成结果的目录。用文件夹方式，路径实实在在，就在那里。
+便于配置：如果需要临时改一下 env_sit.yaml 里的账号密码，用户可以直接用记事本打开改，改完再跑。如果是 exe，你就得重新打包发给他。
+现在，你只需要把这个 Zip 发过去，对方解压，双击 start.bat，你的 Python 代码就能顺利调用内置的 Java 和 Allure 生成报告了。
