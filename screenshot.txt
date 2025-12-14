@@ -1,0 +1,71 @@
+import pytest
+import allure
+from playwright.sync_api import Page, Locator
+
+@pytest.fixture(scope="function")
+def smart_screenshot(page: Page, request: pytest.FixtureRequest):
+    captured_alerts = []
+
+    def _monitor(dialog):
+        captured_alerts.append(f"[{dialog.type}] {dialog.message}")
+
+    page.on("dialog", _monitor)
+
+    def _capture(locator: Locator = None, name: str = "action"):
+        if locator:
+            try:
+                locator.scroll_into_view_if_needed()
+                locator.evaluate("el => el.style.outline = '4px solid red'")
+            except:
+                pass
+
+        try:
+            allure.attach(
+                page.screenshot(full_page=False),
+                name=f"Screenshot-{name}",
+                attachment_type=allure.attachment_type.PNG
+            )
+            
+            if captured_alerts:
+                allure.attach(
+                    "\n".join(captured_alerts),
+                    name=f"Alert-Content-{name}",
+                    attachment_type=allure.attachment_type.TEXT
+                )
+        finally:
+            if locator:
+                try:
+                    locator.evaluate("el => el.style.outline = ''")
+                except:
+                    pass
+            captured_alerts.clear()
+            request.node.manual_screenshot_done = True
+
+    yield _capture
+    page.remove_listener("dialog", _monitor)
+
+def pytest_bdd_after_step(request, feature, scenario, step, step_func):
+    step_file = step_func.__code__.co_filename.replace("\\", "/")
+    
+    if "features/steps/ui" in step_file:
+        failed = getattr(request.node, "rep_call", None) and getattr(request.node.rep_call, "failed", False)
+        manual_done = getattr(request.node, "manual_screenshot_done", False)
+
+        should_capture = failed or not manual_done
+
+        if should_capture:
+            try:
+                page = request.getfixturevalue("page")
+                allure.attach(
+                    page.screenshot(full_page=True),
+                    name=f"Auto-Screenshot-{step.name}",
+                    attachment_type=allure.attachment_type.PNG
+                )
+            except:
+                pass
+        
+        request.node.manual_screenshot_done = False
+
+    if hasattr(request.node, "_allure_step"):
+        request.node._allure_step.__exit__(None, None, None)
+
